@@ -159,12 +159,18 @@ _groonga_init_grn_rc(PyObject *module)
 typedef struct {
     PyObject_HEAD
     grn_ctx ctx;
-    int opened;
+    grn_obj *db;
+    int opened :16;
+    int use_db :16;
 } GroongaContext;
 
 static void
 GroongaContext_dealloc(GroongaContext *self)
 {
+    if (self->use_db) {
+        grn_obj_unlink(&self->ctx, self->db);
+    }
+
     if (self->opened) {
         Py_BEGIN_ALLOW_THREADS
         grn_ctx_fin(&self->ctx);
@@ -284,6 +290,58 @@ GroongaContext_recv(GroongaContext *self)
     return Py_BuildValue("(is#i)", self->ctx.rc, str, str_len, flags);
 }
 
+static PyObject *
+GroongaContext_create_database(GroongaContext *self, PyObject *args, PyObject *kwargs)
+{
+    grn_obj *db;
+    grn_db_create_optarg create_optargs;
+    const char *path;
+    static char *kwlist[] = {"path", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|z", kwlist, &path)) {
+        return NULL;
+    }
+
+    create_optargs.builtin_type_names = NULL;
+    create_optargs.n_builtin_type_names = 0;
+
+    db = grn_db_create(&self->ctx, path, &create_optargs);
+    if (!db) {
+        /* TODO: error handling */
+        //PyErr_Format(PyExc_SystemError,
+        //             "grn_db_create() error. %s",
+        //            _groonga_consts[abs(self->ctx.rc) + 1].name);
+        return NULL;
+    }
+
+    self->db = db;
+    self->opened = TRUE;
+
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+GroongaContext_open_database(GroongaContext *self, PyObject *args, PyObject *kwargs)
+{
+    grn_obj *db;
+    const char *path;
+    static char *kwlist[] = {"path", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s", kwlist, &path)) {
+        return NULL;
+    }
+
+    db = grn_db_open(&self->ctx, path);
+    if (!db) {
+        return NULL;
+    }
+
+    self->db = db;
+    self->opened = TRUE;
+
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef GroongaContext_methods[] = {
     {"get_encoding", (PyCFunction)GroongaContext_get_encoding, METH_NOARGS,
      ""},
@@ -294,6 +352,10 @@ static PyMethodDef GroongaContext_methods[] = {
     {"send", (PyCFunction)GroongaContext_send, METH_VARARGS | METH_KEYWORDS,
      ""},
     {"recv", (PyCFunction)GroongaContext_recv, METH_NOARGS,
+     ""},
+    {"open_database", (PyCFunction)GroongaContext_open_database, METH_VARARGS | METH_KEYWORDS,
+     ""},
+    {"create_database", (PyCFunction)GroongaContext_create_database, METH_VARARGS | METH_KEYWORDS,
      ""},
     {NULL}, /* Sentinel */
 };

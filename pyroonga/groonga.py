@@ -86,6 +86,18 @@ class Groonga(object):
         self._raise_if_notsuccess(rc)
         self.connected = True
 
+    def open_database(self, path):
+        """Open groonga database file
+        """
+        self._ctx.open_database(path)
+        self.connected = True   # FIXME: dirty hack
+
+    def create_database(self, path=None):
+        """Create to groonga database file
+        """
+        self._ctx.create_database(path)
+        self.connected = True   # FIXME: dirty hack
+
     def reconnect(self):
         """Reconnect to the groonga server
         """
